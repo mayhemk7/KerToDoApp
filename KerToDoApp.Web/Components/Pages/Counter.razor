@@ -1,0 +1,594 @@
+﻿@page "/counter"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+<PageTitle>To Do List</PageTitle>
+
+<div class="todo-page">
+    <section class="todo-card" aria-labelledby="todo-title">
+        <h1 id="todo-title">Tuh Doo Lihs</h1>
+
+        @if (isLoading)
+        {
+            <p class="empty-message">Loading tasks...</p>
+        }
+        else
+        {
+            <form class="todo-entry" @onsubmit="AddTask" @onsubmit:preventDefault>
+                <label class="visually-hidden" for="new-task">New task</label>
+
+                <input id="new-task"
+                       class="todo-input"
+                       @bind="newTask"
+                       @bind:event="oninput"
+                       placeholder="Enter a task..."
+                       autocomplete="off" />
+
+                <button class="submit-button" type="submit">
+                    Submit
+                </button>
+            </form>
+
+            <div class="todo-list" aria-live="polite">
+                @if (tasks.Count == 0)
+                {
+                    <p class="empty-message">No active tasks. Add one above.</p>
+                }
+                else
+                {
+                    @foreach (var task in tasks)
+                    {
+                        <div class="todo-row">
+                            @if (editingTaskId == task.Id)
+                            {
+                                <input class="edit-input"
+                                       @bind="editingText"
+                                       @bind:event="oninput"
+                                       @onkeydown="HandleEditKeyDown"
+                                       aria-label="Edit task" />
+
+                                <button class="action-button save-button"
+                                        type="button"
+                                        @onclick="() => SaveTask(task.Id)">
+                                    Save
+                                </button>
+                            }
+                            else
+                            {
+                                <span class="task-text">@task.Text</span>
+
+                                <button class="action-button edit-button"
+                                        type="button"
+                                        @onclick="() => BeginEdit(task)">
+                                    Edit
+                                </button>
+                            }
+
+                            <button class="action-button delete-button"
+                                    type="button"
+                                    @onclick="() => DeleteTask(task.Id)">
+                                Delete
+                            </button>
+
+                            <button class="action-button archive-button"
+                                    type="button"
+                                    @onclick="() => ArchiveTask(task.Id)">
+                                Archive
+                            </button>
+                        </div>
+                    }
+                }
+            </div>
+
+            @if (archivedTasks.Count > 0)
+            {
+                <button class="archive-toggle"
+                        type="button"
+                        @onclick="ToggleArchivedTasks">
+                    @(showArchived ? "Hide archived tasks" : "View archived tasks")
+                    (@archivedTasks.Count)
+                </button>
+            }
+
+            @if (showArchived)
+            {
+                <section class="archive-panel" aria-labelledby="archived-title">
+                    <div class="archive-header">
+                        <h2 id="archived-title">Archived tasks</h2>
+
+                        <button class="action-button delete-button"
+                                type="button"
+                                @onclick="DeleteAllArchivedTasks">
+                            Delete all
+                        </button>
+                    </div>
+
+                    @foreach (var task in archivedTasks)
+                    {
+                        <div class="archive-row">
+                            <span class="task-text">@task.Text</span>
+
+                            <button class="action-button restore-button"
+                                    type="button"
+                                    @onclick="() => RestoreTask(task.Id)">
+                                Restore
+                            </button>
+
+                            <button class="action-button delete-button"
+                                    type="button"
+                                    @onclick="() => DeleteArchivedTask(task.Id)">
+                                Delete
+                            </button>
+                        </div>
+                    }
+                </section>
+            }
+        }
+    </section>
+</div>
+
+<style>
+    .todo-page {
+        min-height: calc(100vh - 5rem);
+        display: flex;
+        justify-content: center;
+        padding: 1.5rem 1rem 3rem;
+        background: #fff;
+    }
+
+    .todo-card {
+        width: min(100%, 56rem);
+    }
+
+    .todo-card h1 {
+        margin: 0 0 2.25rem;
+        color: #14191f;
+        font-size: clamp(3rem, 7vw, 4.5rem);
+        font-weight: 700;
+        letter-spacing: -0.08em;
+        line-height: 1;
+        text-align: center;
+    }
+
+    .todo-entry {
+        display: flex;
+        gap: 0.85rem;
+        margin: 0 auto 2.75rem;
+    }
+
+    .todo-input,
+    .edit-input {
+        min-width: 0;
+        border: 2px solid #b7c0c9;
+        border-radius: 0.55rem;
+        color: #14191f;
+        font-size: 1.45rem;
+        outline: none;
+        padding: 0.8rem 1.1rem;
+    }
+
+    .todo-input {
+        flex: 1;
+    }
+
+    .todo-input:focus,
+    .edit-input:focus {
+        border-color: #1473dc;
+        box-shadow: 0 0 0 0.18rem rgba(20, 115, 220, 0.18);
+    }
+
+    .todo-input::placeholder {
+        color: #8d98a3;
+    }
+
+    .submit-button,
+    .save-button {
+        border: 0;
+        border-radius: 0.55rem;
+        color: #fff;
+        background: #116ed7;
+        cursor: pointer;
+        font-weight: 600;
+    }
+
+    .submit-button {
+        min-width: 10rem;
+        padding: 0 1.5rem;
+        font-size: 1.45rem;
+    }
+
+    .submit-button:hover,
+    .save-button:hover {
+        background: #0b5db9;
+    }
+
+    .todo-list {
+        max-height: 26rem;
+        overflow-y: auto;
+        border: 2px solid #d2d8de;
+        border-radius: 0.6rem;
+        box-shadow: 0 0.35rem 0.75rem rgba(23, 35, 48, 0.12);
+    }
+
+    .todo-row {
+        min-height: 4.4rem;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto auto;
+        align-items: center;
+        gap: 1.75rem;
+        padding: 0.75rem 1.9rem;
+        border-bottom: 1px solid #d9dee3;
+    }
+
+    .todo-row:last-child {
+        border-bottom: 0;
+    }
+
+    .task-text {
+        overflow: hidden;
+        color: #14191f;
+        font-size: 1.45rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .edit-input {
+        width: 100%;
+        padding: 0.45rem 0.75rem;
+        font-size: 1.25rem;
+    }
+
+    .action-button {
+        border: 0;
+        background: transparent;
+        cursor: pointer;
+        font-size: 1.3rem;
+        white-space: nowrap;
+    }
+
+    .edit-button,
+    .save-button {
+        color: #116ed7;
+    }
+
+    .edit-button:hover,
+    .delete-button:hover,
+    .archive-button:hover {
+        text-decoration: underline;
+    }
+
+    .delete-button {
+        color: #d94343;
+    }
+
+    .archive-button {
+        color: #707a84;
+    }
+
+    .save-button {
+        border-radius: 0.45rem;
+        padding: 0.45rem 1rem;
+    }
+
+    .empty-message {
+        margin: 0;
+        padding: 2rem;
+        color: #707a84;
+        font-size: 1.2rem;
+        text-align: center;
+    }
+
+    .archive-summary {
+        margin: 1rem 0 0;
+        color: #707a84;
+        text-align: right;
+    }
+
+    .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+    }
+
+    .archive-toggle {
+        display: block;
+        margin: 1.25rem 0 0 auto;
+        border: 0;
+        color: #116ed7;
+        background: transparent;
+        cursor: pointer;
+        font-size: 1.1rem;
+    }
+
+    .archive-toggle:hover {
+        text-decoration: underline;
+    }
+
+    .archive-panel {
+        margin-top: 1rem;
+        overflow: hidden;
+        border: 2px solid #d2d8de;
+        border-radius: 0.6rem;
+        box-shadow: 0 0.35rem 0.75rem rgba(23, 35, 48, 0.12);
+    }
+
+    .archive-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.75rem 1.9rem;
+        border-bottom: 1px solid #d9dee3;
+    }
+
+    .archive-header h2 {
+        margin: 0;
+        color: #14191f;
+        font-size: 1.35rem;
+    }
+
+    .archive-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        align-items: center;
+        gap: 1.75rem;
+        min-height: 3.75rem;
+        padding: 0.75rem 1.9rem;
+        border-bottom: 1px solid #d9dee3;
+    }
+
+    .archive-row:last-child {
+        border-bottom: 0;
+    }
+
+    .restore-button {
+        color: #116ed7;
+    }
+
+    .restore-button:hover {
+        text-decoration: underline;
+    }
+
+    @@media (max-width: 700px) {
+        .todo-entry {
+            flex-direction: column;
+        }
+
+        .submit-button {
+            min-height: 3.25rem;
+        }
+
+        .todo-row {
+            grid-template-columns: 1fr auto auto;
+            gap: 0.75rem;
+            padding: 0.85rem 1rem;
+        }
+
+        .task-text,
+        .edit-input {
+            grid-column: 1 / -1;
+        }
+
+        .action-button {
+            font-size: 1.05rem;
+        }
+    }
+</style>
+
+@code {
+    private const string StorageKey = "ker-todo-app-state";
+
+    private string newTask = string.Empty;
+    private string editingText = string.Empty;
+    private Guid? editingTaskId;
+    private bool isLoading = true;
+    private bool showArchived;
+
+    private readonly List<TodoItem> tasks = [];
+    private readonly List<TodoItem> archivedTasks = [];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        var savedState = await JS.InvokeAsync<string?>(
+            "localStorage.getItem",
+            StorageKey);
+
+        if (string.IsNullOrWhiteSpace(savedState))
+        {
+            tasks.AddRange(
+            [
+                new TodoItem("Finish Blazor tutorial"),
+                new TodoItem("Review project notes"),
+                new TodoItem("Buy groceries"),
+                new TodoItem("Schedule team meeting"),
+                new TodoItem("Read one chapter")
+            ]);
+
+            await PersistTasksAsync();
+        }
+        else
+        {
+            var state = System.Text.Json.JsonSerializer.Deserialize<TodoState>(
+                savedState);
+
+            if (state is not null)
+            {
+                tasks.AddRange(state.Tasks);
+                archivedTasks.AddRange(state.ArchivedTasks);
+            }
+        }
+
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task AddTask()
+    {
+        var taskText = newTask.Trim();
+
+        if (string.IsNullOrWhiteSpace(taskText))
+        {
+            return;
+        }
+
+        tasks.Add(new TodoItem(taskText));
+        newTask = string.Empty;
+
+        await PersistTasksAsync();
+    }
+
+    private void BeginEdit(TodoItem task)
+    {
+        editingTaskId = task.Id;
+        editingText = task.Text;
+    }
+
+    private async Task SaveTask(Guid taskId)
+    {
+        var taskText = editingText.Trim();
+
+        if (string.IsNullOrWhiteSpace(taskText))
+        {
+            return;
+        }
+
+        var task = tasks.FirstOrDefault(item => item.Id == taskId);
+
+        if (task is not null)
+        {
+            task.Text = taskText;
+        }
+
+        CancelEdit();
+        await PersistTasksAsync();
+    }
+
+    private async Task DeleteTask(Guid taskId)
+    {
+        tasks.RemoveAll(task => task.Id == taskId);
+
+        if (editingTaskId == taskId)
+        {
+            CancelEdit();
+        }
+
+        await PersistTasksAsync();
+    }
+
+    private async Task ArchiveTask(Guid taskId)
+    {
+        var task = tasks.FirstOrDefault(item => item.Id == taskId);
+
+        if (task is null)
+        {
+            return;
+        }
+
+        tasks.Remove(task);
+        archivedTasks.Add(task);
+
+        if (editingTaskId == taskId)
+        {
+            CancelEdit();
+        }
+
+        await PersistTasksAsync();
+    }
+
+    private async Task RestoreTask(Guid taskId)
+    {
+        var task = archivedTasks.FirstOrDefault(item => item.Id == taskId);
+
+        if (task is null)
+        {
+            return;
+        }
+
+        archivedTasks.Remove(task);
+        tasks.Add(task);
+
+        await PersistTasksAsync();
+    }
+
+    private async Task DeleteArchivedTask(Guid taskId)
+    {
+        archivedTasks.RemoveAll(task => task.Id == taskId);
+        await PersistTasksAsync();
+    }
+
+    private async Task DeleteAllArchivedTasks()
+    {
+        archivedTasks.Clear();
+        showArchived = false;
+
+        await PersistTasksAsync();
+    }
+
+    private void ToggleArchivedTasks()
+    {
+        showArchived = !showArchived;
+    }
+
+    private void CancelEdit()
+    {
+        editingTaskId = null;
+        editingText = string.Empty;
+    }
+
+    private void HandleEditKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+        {
+            CancelEdit();
+        }
+    }
+
+    private async Task PersistTasksAsync()
+    {
+        var state = new TodoState
+        {
+            Tasks = tasks,
+            ArchivedTasks = archivedTasks
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(state);
+
+        await JS.InvokeVoidAsync(
+            "localStorage.setItem",
+            StorageKey,
+            json);
+    }
+
+    private sealed class TodoState
+    {
+        public List<TodoItem> Tasks { get; set; } = [];
+
+        public List<TodoItem> ArchivedTasks { get; set; } = [];
+    }
+
+    private sealed class TodoItem
+    {
+        public TodoItem()
+        {
+        }
+
+        public TodoItem(string text)
+        {
+            Id = Guid.NewGuid();
+            Text = text;
+        }
+
+        public Guid Id { get; set; }
+
+        public string Text { get; set; } = string.Empty;
+    }
+}

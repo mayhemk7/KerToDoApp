@@ -1,0 +1,17 @@
+.vs/
+**/bin/
+**/obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Build and test results
+TestResults/
+[Bb]uild/
+[Dd]ebug/
+[Rr]elease/
+
+# Local environment and secrets
+.env
+appsettings.local.json
